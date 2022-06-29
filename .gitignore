@@ -1,0 +1,6 @@
+dist-newstyle/*
+luac/*.lua
+
+luac/hardcrypted.luac
+luac/moli.test_protected.luac
+luac/moonl.luac

@@ -1,0 +1,107 @@
+cabal-version:      2.4
+name:               lida
+version:            0.1.0.0
+synopsis:           LuaJIT Interactive Disassembler
+author:             Sergey Timoshenko
+maintainer:         kewaopcode@icloud.com
+
+
+executable lida
+    main-is:          Main.hs
+
+    other-modules: LuaJIT.Script
+                 , LuaJIT.Instruction
+                 , LuaJIT.ULEB128
+                 , LuaJIT.TH
+                 , Lida.InstructionText
+                 , Lida.Parser
+                 , Test
+
+    build-depends: base
+                 , bytestring
+                 , cereal
+                 , containers
+                 , generics-sop
+                 , lens
+                 , monad-loops
+                 , sop-core
+                 , text
+                 , vector
+                 , template-haskell
+                 , megaparsec
+                 , mtl
+                 , tasty
+                 , tasty-hunit
+                 , SHA
+                 , optparse-applicative
+                 , pretty-simple
+                 , containers
+
+    hs-source-dirs:   app
+
+    default-language: Haskell2010
+
+    ghc-options: -O2
+                 -threaded
+                 -Wall
+                 -Werror
+                 -Wno-orphans
+                 -Wno-incomplete-patterns
+
+    default-extensions: DataKinds
+                      , DeriveAnyClass
+                      , FlexibleContexts
+                      , FlexibleInstances
+                      , OverloadedStrings
+                      , RecordWildCards
+                      , ScopedTypeVariables
+                      , StandaloneDeriving
+                      , TypeApplications
+                      , TypeFamilies
+                      , BlockArguments
+
+
+test-suite lida-test
+    type:               exitcode-stdio-1.0
+    main-is:            Test.hs
+    default-extensions: DoAndIfThenElse
+    hs-source-dirs:     app
+    other-modules:
+        LuaJIT.Instruction
+        LuaJIT.Script
+        LuaJIT.TH
+        LuaJIT.ULEB128
+
+    ghc-options:
+        -main-is Test.hs
+        -Wall
+        -Werror
+        -Wno-orphans
+        -Wno-incomplete-patterns
+    default-language: Haskell2010
+
+    build-depends: base
+                 , bytestring
+                 , cereal
+                 , generics-sop
+                 , lens
+                 , tasty
+                 , tasty-hunit
+                 , SHA
+                 , monad-loops
+                 , sop-core
+                 , vector
+                 , template-haskell
+                 , containers
+
+    default-extensions: DataKinds
+                      , DeriveAnyClass
+                      , FlexibleContexts
+                      , FlexibleInstances
+                      , OverloadedStrings
+                      , RecordWildCards
+                      , ScopedTypeVariables
+                      , StandaloneDeriving
+                      , TypeApplications
+                      , TypeFamilies
+                      , BlockArguments
