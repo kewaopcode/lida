@@ -20,7 +20,7 @@ import           Text.Megaparsec.Char
 import           LuaJIT.Instruction
 
 
--- example: "addvv 1 2 3"
+-- | example: "addvv 1 2 3"
 parseInstruction :: Text -> Maybe Instruction
 parseInstruction text =
     let
@@ -72,6 +72,15 @@ instance
         void $ hspace1
         fd <- newtypeTo . read <$> some digitChar
         return $ to $ SOP $ unK $ inj (I (OpAD fa fd) :* Nil)
+
+
+showInstruction :: Instruction -> Text
+showInstruction i =
+    let
+        constraint = Proxy @GShowInstruction
+        constructors = constructorInfo $ datatypeInfo $ Proxy @Instruction
+    in
+    hcollapse $ hcliftA2 constraint gShowInstruction constructors (unSOP $ from i)
 
 
 class GShowInstruction (a :: [Type]) where

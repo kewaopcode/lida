@@ -15,11 +15,14 @@ executable lida
                  , LuaJIT.TH
                  , Lida.InstructionText
                  , Lida.Parser
+                 , Lida.XRef
                  , Test
 
     build-depends: base
                  , bytestring
                  , cereal
+                 , cereal-conduit
+                 , conduit
                  , containers
                  , generics-sop
                  , lens
@@ -36,17 +39,20 @@ executable lida
                  , optparse-applicative
                  , pretty-simple
                  , containers
+                 , deepseq
+                 , weigh
 
     hs-source-dirs:   app
 
     default-language: Haskell2010
 
     ghc-options: -O2
-                 -threaded
+                 -fllvm
                  -Wall
                  -Werror
                  -Wno-orphans
                  -Wno-incomplete-patterns
+                 -Wno-incomplete-uni-patterns
 
     default-extensions: DataKinds
                       , DeriveAnyClass
@@ -76,13 +82,18 @@ test-suite lida-test
         -main-is Test.hs
         -Wall
         -Werror
+        -threaded
+        -fprof-auto
         -Wno-orphans
         -Wno-incomplete-patterns
+        -with-rtsopts=-hc
     default-language: Haskell2010
 
     build-depends: base
                  , bytestring
                  , cereal
+                 , cereal-conduit
+                 , conduit
                  , generics-sop
                  , lens
                  , tasty
@@ -105,3 +116,4 @@ test-suite lida-test
                       , TypeApplications
                       , TypeFamilies
                       , BlockArguments
+

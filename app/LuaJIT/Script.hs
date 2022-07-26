@@ -1,9 +1,11 @@
+{-# LANGUAGE DeriveGeneric   #-}
 {-# LANGUAGE MultiWayIf      #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module LuaJIT.Script where
 
 import           Control.Applicative ((<|>))
+import           Control.DeepSeq     (NFData)
 import           Control.Lens.TH     (makePrisms)
 import           Control.Monad       (replicateM, void)
 import           Control.Monad.Loops (untilM)
@@ -19,19 +21,21 @@ import           Data.Vector         (Vector)
 import qualified Data.Vector         as V
 import           Data.Word           (Word16, Word32, Word64, Word8)
 import qualified GHC.Float           as Float
+import           GHC.Generics        (Generic)
 
 import           LuaJIT.Instruction  (Instruction)
 import           LuaJIT.TH           (makeLenses_)
 import qualified LuaJIT.ULEB128      as ULEB128
 
 
-type TolerantInstruction = Either ByteString Instruction
+type TolerantInstruction =
+    Either Word32 Instruction
 
 
 data LuaNumber
     = LuaDouble Double
     | LuaInt Word32
-    deriving (Show, Eq)
+    deriving (Show, Eq, Generic, NFData)
 
 makePrisms ''LuaNumber
 
@@ -43,16 +47,15 @@ data TableElement
     | KTAB_STR ByteString
     | KTAB_INT Word32
     | KTAB_NUM Double
-    deriving (Eq, Show, Ord)
+    deriving (Eq, Show, Ord, Generic, NFData)
 
 makePrisms ''TableElement
 
 
-data KGCTable
-    = KGCArray (Vector TableElement)
-    | KGCTable (Map TableElement TableElement)
-    | KGCTableEmpty
-    deriving (Eq, Show)
+data KGCTable = KGCTable
+    { kgcTabArray :: Vector TableElement
+    , kgcTabTable :: Map TableElement TableElement
+    } deriving (Eq, Show, Generic, NFData)
 
 makeLenses_ ''KGCTable
 
@@ -64,7 +67,7 @@ data KGC
     | KGC_U64 Word64
     | KGC_COMPLEX Word32 Word32 Word32 Word32
     | KGC_STR ByteString
-    deriving (Eq, Show)
+    deriving (Eq, Show, Generic, NFData)
 
 makePrisms ''KGC
 
@@ -74,7 +77,7 @@ data HeaderFlags = HeaderFlags
     , headerFlagsStrip :: Bool
     , headerFlagsFFI   :: Bool
     , headerFlagsFR2   :: Bool
-    } deriving (Eq, Show)
+    } deriving (Eq, Show, Generic, NFData)
 
 makeLenses_ ''HeaderFlags
 
@@ -84,12 +87,12 @@ data Proto = Proto
     , protoFrameSize    :: Word8
     , protoFirstLine    :: Maybe Word32
     , protoNumLine      :: Maybe Word32
-    , protoInstructions :: [TolerantInstruction]
+    , protoInstructions :: Vector TolerantInstruction
     , protoUV           :: Vector Word16
     , protoConstantsGC  :: Vector KGC
     , protoConstantsNum :: Vector LuaNumber
     , protoDebug        :: Maybe ByteString
-    } deriving (Eq, Show)
+    } deriving (Eq, Show, Generic, NFData)
 
 makeLenses_ ''Proto
 
@@ -98,7 +101,7 @@ data Header = Header
     { headerVersion   :: Word8
     , headerFlags     :: HeaderFlags
     , headerChunkName :: Maybe ByteString
-    } deriving (Eq, Show)
+    } deriving (Eq, Show, Generic, NFData)
 
 makeLenses_ ''Header
 
@@ -106,7 +109,7 @@ makeLenses_ ''Header
 data Script = Script
     { scriptHeader :: Header
     , scriptProtos :: [Proto]
-    } deriving (Eq, Show)
+    } deriving (Eq, Show, Generic, NFData)
 
 makeLenses_ ''Script
 
@@ -169,8 +172,8 @@ decodeProto HeaderFlags{..} = do
     protoFirstLine <- decodeIf (protoSizeDbg /= Just 0 && protoSizeDbg /= Nothing) ULEB128.decode
     protoNumLine <- decodeIf (protoSizeDbg /= Just 0 && protoSizeDbg /= Nothing) ULEB128.decode
 
-    protoInstructions <- replicateM (fromIntegral protoSizeBC) decodeTolerantInstruction
-    protoUV <- V.replicateM (fromIntegral protoSizeUV) getWord16host
+    protoInstructions <- V.replicateM (fromIntegral protoSizeBC) decodeTolerantInstruction
+    protoUV <- V.replicateM (fromIntegral protoSizeUV) getWord16le
     protoConstantsGC <- V.replicateM (fromIntegral protoSizeKGC) decodeKGC
     protoConstantsNum <- V.replicateM (fromIntegral protoSizeKN) decodeKNum
     protoDebug <- case protoSizeDbg of
@@ -188,10 +191,7 @@ decodeKGCTable = do
     array <- V.replicateM (fromIntegral arrayLen) decodeTableElement
     table <- replicateM (fromIntegral hashLen) (getTwoOf decodeTableElement decodeTableElement)
 
-    if | not (V.null array) && not (null table) -> fail "What the fuck"
-       | not (V.null array)                     -> return $ KGCArray array
-       | not (null table)                       -> return $ KGCTable $ M.fromList table
-       | V.null array && null table             -> return KGCTableEmpty
+    return $ KGCTable array (M.fromList table)
 
 
 decodeTableElement :: Get TableElement
@@ -276,40 +276,28 @@ encodeProto Proto {..} = do
     putWord8 protoNumParams
     putWord8 protoFrameSize
     putWord8 (fromIntegral $ V.length protoUV)
-    ULEB128.encode @Word32 (fromIntegral $ length protoConstantsGC)
-    ULEB128.encode @Word32 (fromIntegral $ length protoConstantsNum)
-    ULEB128.encode @Word32 (fromIntegral $ length protoInstructions)
+    ULEB128.encode @Word32 (fromIntegral $ V.length protoConstantsGC)
+    ULEB128.encode @Word32 (fromIntegral $ V.length protoConstantsNum)
+    ULEB128.encode @Word32 (fromIntegral $ V.length protoInstructions)
 
     encodeMaybe ULEB128.encode (BS.length <$> protoDebug)
     encodeMaybe ULEB128.encode protoFirstLine
     encodeMaybe ULEB128.encode protoNumLine
 
     mapM_ encodeTolerantInstruction protoInstructions
-    mapM_ putWord16host protoUV
+    mapM_ putWord16le protoUV
     mapM_ encodeKGC protoConstantsGC
     mapM_ encodeKNum protoConstantsNum
     encodeMaybe putByteString protoDebug
 
 
 encodeKGCTable :: Putter KGCTable
-encodeKGCTable t = do
-    case t of
-        KGCTable table -> do
-            ULEB128.encode @Word8 0
-            ULEB128.encode $ length table
+encodeKGCTable (KGCTable array table) = do
+    ULEB128.encode $ length array
+    ULEB128.encode $ length table
 
-            void $ M.traverseWithKey (curry $ putTwoOf encodeTableElement encodeTableElement) table
-
-        KGCArray array -> do
-            ULEB128.encode $ length array
-            ULEB128.encode @Word8 0
-
-            mapM_ encodeTableElement array
-
-        KGCTableEmpty -> do
-            ULEB128.encode @Word8 0
-            ULEB128.encode @Word8 0
-
+    mapM_ encodeTableElement array
+    void $ M.traverseWithKey (curry $ putTwoOf encodeTableElement encodeTableElement) table
 
 
 encodeTableElement :: Putter TableElement
@@ -366,11 +354,11 @@ encodeMaybe putter (Just a) = putter a
 
 decodeTolerantInstruction :: Get TolerantInstruction
 decodeTolerantInstruction =
-    Right <$> get @Instruction <|> Left <$> getByteString 4
+    Right <$> get @Instruction <|> Left <$> getWord32le
 
 
 encodeTolerantInstruction :: Putter TolerantInstruction
-encodeTolerantInstruction (Left bs) = putByteString bs
+encodeTolerantInstruction (Left bs) = putWord32le bs
 encodeTolerantInstruction (Right i) = put @Instruction i
 
 

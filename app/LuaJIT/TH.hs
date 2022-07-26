@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module LuaJIT.TH where
 
 import           Control.Lens        ((.~))
